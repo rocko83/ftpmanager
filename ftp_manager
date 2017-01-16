@@ -1,0 +1,1638 @@
+#!/bin/bash
+export DIA_OK=0
+export DIA_CANCEL=1
+export DIA_HELP=2
+export DIA_EXTRA=3
+export DIA_ITEM_HELP=4
+export DIA_ESC=255
+export ALTURA=20
+export LARGURA=60
+export SCRIPT_PATH=/admin/maintenance
+export MENU_HELP=$SCRIPT_PATH/menu_help.txt
+export USER_HELP=$SCRIPT_PATH/user_help.txt
+export QUOTA_HELP=$SCRIPT_PATH/quota_help.txt
+export CLEAN_HELP=$SCRIPT_PATH/clean_help.txt
+export FW_HELP=$SCRIPT_PATH/fw_help.txt
+export LOG_AUDITORIA=/var/log/ftpman_auditoria.log
+function USUARIO() {
+exec 3>&1
+while true
+do
+        SELECAO=$(dialog \
+                --backtitle "Menu de opcoes de usuarios " \
+                --title "USUARIOS" \
+                --clear \
+		--help-button \
+                --menu "Favor selecionar:" $ALTURA $LARGURA 10 \
+                "1" "Listar Usuarios" \
+                "2" "Criar Usuarios" \
+                "3" "Apagar Usuarios" \
+                "4" "Alterar Senha" \
+                "5" "Gerar uma nova senha para usuario" \
+                "6" "Listar membros de um grupo" \
+                "7" "Criar usuario compartilhado" \
+                "8" "Listar Validade dos usuarios" \
+                "9" "Alterar Validade dos usuarios" \
+                "10" "Alterar comentario do usuario" \
+                "s" "Sair"\
+                2>&1 1>&3 )
+        RETORNO=$?
+        case $RETORNO in
+                $DIA_OK)
+                        case $SELECAO in
+                                1)
+                                        USUARIO_LISTAR
+                                        ;;
+                                2)
+                                        USUARIO_CRIAR
+                                        ;;
+                                3)
+                                        USUARIO_APAGAR
+                                        ;;
+                                4)
+                                        USUARIO_SENHA
+                                        ;;
+                                5)
+                                        USUARIO_SENHA_GEN
+                                        ;;
+                                6)
+                                        LISTAR_USUARIOS_POR_GRUPO
+                                        ;;
+                                7)
+                                        USUARIO_CRIAR_COMPARTILHADO
+                                        ;;
+				8)
+					LISTA_EXPIRACAO_USUARIO
+					;;
+				9)
+					ALTERAR_EXPIRACAO_USUARIO
+					;;
+				10)
+					ALTERAR_COMENTARIO
+					;;
+                                s)
+                                        break
+                                        ;;
+                                *)
+                                        dialog --clear
+                                        break
+                                        ;;
+                        esac
+                        ;;
+                $DIA_CANCEL)
+                        dialog --clear
+			break
+                        ;;
+                $DIA_HELP)
+			dialog \
+			--title "HELP" \
+			--textbox $MENU_HELP  \
+			0 0
+                        ;;
+                $DIA_EXTRA)
+                        dialog --clear
+			break
+                        ;;
+                $DIA_ITEM_HELP)
+                        dialog --clear
+			break
+                        ;;
+                $DIA_ESC)
+                        dialog --clear
+			break
+                        ;;
+                *)
+                        dialog --clear
+			break
+                        ;;
+        esac
+ 
+done
+}
+function ALTERAR_EXPIRACAO_USUARIO() {
+        arqtemp=$(ARQTEMP criar)
+        dialog \
+        --title "Alterar Senha" \
+        --inputbox "Entre com o nome do usuario a ter sua validade alterada" 0 0 2> $arqtemp
+        retorno=$?
+        case $retorno in
+                $DIA_CANCEL)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_HELP)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_EXTRA)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_ITEM_HELP)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_ESC)
+                        dialog --clear
+                        break
+                        ;;
+        esac
+        nomeusuario=$(cat $arqtemp)
+        ARQTEMP apagar $arqtemp
+        cat /etc/passwd | grep \/dados\/ftp | awk -F : '{print $1}'  |grep -w $nomeusuario
+        retorno=$?
+        if [ $retorno -ne 0 ]
+        then
+                dialog --title "ERRO" \
+                --msgbox "Usuario $nomeusuario nao existe. \
+                Tente novamente" \
+                6 40
+                break
+        fi
+        arqtemp=$(ARQTEMP criar)
+        dialog \
+        --inputbox "Entre com a validade do usuario $nomeusuario em dias, somente os numeros" 0 0 2> $arqtemp
+        retorno=$?
+        case $retorno in
+                $DIA_CANCEL)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_HELP)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_EXTRA)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_ITEM_HELP)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_ESC)
+                        dialog --clear
+                        break
+                        ;;
+        esac
+        validade=$(cat $arqtemp)
+        ARQTEMP apagar $arqtemp
+	if [ $validade -gt 0 ]
+        then
+                chage -E $(date -d "$validade days" +"%Y-%m-%d") $nomeusuario
+	else
+                chage -E -1 $nomeusuario
+        fi
+        echo 5 > /admin/maintenance/retencao/$USUARIO
+        dialog \
+        --title "SUCESSO" \
+        --msgbox "A validade do usuario $nomeusuario atualizado." \
+        6 40
+        AUDITORIA "Alterou a validade do $nomeusuario para expirar em $validade dias"
+ 
+}
+function USUARIO_SENHA() {
+	arqtemp=$(ARQTEMP criar)
+        dialog \
+	--title "Alterar Senha" \
+        --inputbox "Entre com o nome do usuario a ter sua senha alterada" 0 0 2> $arqtemp
+	retorno=$?
+	case $retorno in
+                $DIA_CANCEL)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_HELP)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_EXTRA)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_ITEM_HELP)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_ESC)
+                        dialog --clear
+                        break
+                        ;;
+        esac
+        nomeusuario=$(cat $arqtemp)
+        ARQTEMP apagar $arqtemp
+        cat /etc/passwd | grep \/dados\/ftp | awk -F : '{print $1}'  |grep -w $nomeusuario
+        retorno=$?
+        if [ $retorno -ne 0 ]
+        then
+                dialog --title "ERRO" \
+                --msgbox "Usuario $nomeusuario nao existe. \
+                Tente novamente" \
+                6 40
+                break
+        fi
+	arqtemp=$(ARQTEMP criar)
+        dialog \
+        --passwordbox "Entre com a senha do usuario $nomeusuario" 0 0 2> $arqtemp
+	retorno=$?
+	case $retorno in
+                $DIA_CANCEL)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_HELP)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_EXTRA)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_ITEM_HELP)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_ESC)
+                        dialog --clear
+                        break
+                        ;;
+        esac
+        senha01=$(cat $arqtemp)
+        ARQTEMP apagar $arqtemp
+	arqtemp=$(ARQTEMP criar)
+        dialog \
+        --passwordbox "Confirme a senha do usuario $nomeusuario" 0 0 2> $arqtemp
+	retorno=$?
+	case $retorno in
+                $DIA_CANCEL)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_HELP)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_EXTRA)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_ITEM_HELP)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_ESC)
+                        dialog --clear
+                        break
+                        ;;
+        esac
+        senha02=$(cat $arqtemp)
+        ARQTEMP apagar $arqtemp
+	if [[ $senha01 != $senha02 ]]
+	then
+		dialog \
+		--title "ERRO" \
+		--msgbox "Senhas nao conferem, tente novamente." \
+		6 40
+		break
+	fi
+	echo $nomeusuario:$senha02 | chpasswd
+	retorno=$?
+	if [ $retorno -ne 0 ]
+	then
+		dialog \
+		--title "ERRO" \
+		--msgbox "Erro ao alterar a senha. \
+		Consulte um sysadmin." \
+		6 40
+		break
+	else
+		dialog \
+		--title "SUCESSO" \
+		--msgbox "Senha alterada com sucesso." \
+		6 40
+		AUDITORIA "Alterou a senha do usuario $nomeusuario"
+	fi
+ 
+ 
+ 
+}
+function USUARIO_SENHA_GEN() {
+        arqtemp=$(ARQTEMP criar)
+        dialog \
+        --title "Alterar Senha" \
+        --inputbox "Entre com o nome do usuario a ter sua senha alterada" 0 0 2> $arqtemp
+        retorno=$?
+        case $retorno in
+                $DIA_CANCEL)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_HELP)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_EXTRA)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_ITEM_HELP)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_ESC)
+                        dialog --clear
+                        break
+                        ;;
+        esac
+        nomeusuario=$(cat $arqtemp)
+        ARQTEMP apagar $arqtemp
+        cat /etc/passwd | grep \/dados\/ftp | awk -F : '{print $1}'  |grep -w $nomeusuario
+        retorno=$?
+        if [ $retorno -ne 0 ]
+        then
+                dialog --title "ERRO" \
+                --msgbox "Usuario $nomeusuario nao existe. \
+                Tente novamente" \
+                6 40
+                break
+        fi
+        SENHA=$(GENSENHA)
+        echo $nomeusuario:$SENHA | chpasswd
+        retorno=$?
+        if [ $retorno -ne 0 ]
+        then
+                dialog \
+                --title "ERRO" \
+                --msgbox "Erro ao alterar a senha. \
+                Consulte um sysadmin." \
+                6 40
+                break
+        else
+                dialog \
+                --title "SUCESSO" \
+                --msgbox "Senha alterada com sucesso." \
+                6 40
+                AUDITORIA "Gerou uma nova senha para o usuario $nomeusuario"
+        fi
+        dialog \
+        --title "SUCESSO" \
+        --msgbox "A senha do usuario $nomeusuario e: $SENHA" \
+        6 40
+}
+function ALTERAR_COMENTARIO() {
+        arqtemp=$(ARQTEMP criar)
+        dialog \
+        --title "Alterar Comentario" \
+        --inputbox "Entre com o nome do usuario a ter seu comentario alterado" 0 0 2> $arqtemp
+        retorno=$?
+        case $retorno in
+                $DIA_CANCEL)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_HELP)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_EXTRA)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_ITEM_HELP)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_ESC)
+                        dialog --clear
+                        break
+                        ;;
+        esac
+        nomeusuario=$(cat $arqtemp)
+        ARQTEMP apagar $arqtemp
+        cat /etc/passwd | grep \/dados\/ftp | awk -F : '{print $1}'  |grep -w $nomeusuario
+        retorno=$?
+        if [ $retorno -ne 0 ]
+        then
+                dialog --title "ERRO" \
+                --msgbox "Usuario $nomeusuario nao existe. \
+                Tente novamente" \
+                6 40
+                break
+        fi
+        arqtemp=$(ARQTEMP criar)
+        dialog \
+        --title "Alterar Comentario" \
+        --inputbox "Entre com novo comentario" 0 0 2> $arqtemp
+        retorno=$?
+        case $retorno in
+                $DIA_CANCEL)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_HELP)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_EXTRA)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_ITEM_HELP)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_ESC)
+                        dialog --clear
+                        break
+                        ;;
+        esac
+        comentario=$(cat $arqtemp)
+        ARQTEMP apagar $arqtemp
+ 	usermod -c "$comentario" $nomeusuario
+        dialog \
+        --title "SUCESSO" \
+        --msgbox "Comentario do usuario $nomeusuario = $comentario" \
+        6 40
+        AUDITORIA "Gerou um novo comentario para o usuario $nomeusuario"
+}
+function USUARIO_CRIAR_COMPARTILHADO() {
+	arqtemp=$(ARQTEMP criar)
+        dialog \
+        --inputbox "Entre com o numero do jira" 0 0 2> $arqtemp
+        retorno=$?
+        case $retorno in
+                $DIA_CANCEL)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_HELP)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_EXTRA)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_ITEM_HELP)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_ESC)
+                        dialog --clear
+                        break
+                        ;;
+
+        esac
+        jirainfo=$(cat $arqtemp)
+        ARQTEMP apagar $arqtemp
+        arqtemp=$(ARQTEMP criar)
+        dialog \
+        --inputbox "Entre com o nome do novo usuario a ser criado" 0 0 2> $arqtemp
+        retorno=$?
+	case $retorno in
+                $DIA_CANCEL)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_HELP)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_EXTRA)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_ITEM_HELP)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_ESC)
+                        dialog --clear
+                        break
+                        ;;
+
+        esac
+        if [ $retorno -eq $DIA_CANCEL ]
+        then
+                break
+        fi
+        nomeusuario=$(cat $arqtemp)
+        ARQTEMP apagar $arqtemp
+        cat /etc/passwd | grep \/dados\/ftp | awk -F : '{print $1}'  |grep -w $nomeusuario
+        retorno=$?
+        if [ $retorno -eq 0 ]
+        then
+                dialog --title "ERRO" \
+                --msgbox "Usuario $nomeusuario ja existe. \
+                Tente novamente" \
+                6 40
+                break
+        fi
+        USUARIO=$nomeusuario
+        SENHA=$(GENSENHA)
+        HQUOTA=5G
+        BASEDIR=/dados/ftp01
+        if [ -a $BASEDIR/$USUARIO ]
+        then
+                dialog --title "ERRO" \
+                --msgbox "Home do usuario $nomeusuario ja existe. \
+                Tente novamente ou procure um sysadmin de linux." \
+                6 40
+                break
+        fi
+        arqtemp=$(ARQTEMP criar)
+        dialog \
+        --inputbox "Entre com o nome do usuario a compartilhar o home" 0 0 2> $arqtemp
+        retorno=$?
+	case $retorno in
+                $DIA_CANCEL)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_HELP)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_EXTRA)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_ITEM_HELP)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_ESC)
+                        dialog --clear
+                        break
+                        ;;
+
+        esac
+        nomeusuario=$(cat $arqtemp)
+        ARQTEMP apagar $arqtemp
+        cat /etc/passwd | grep \/dados\/ftp | awk -F : '{print $1}'  |grep -w $nomeusuario
+        retorno=$?
+        if [ $retorno -ne 0 ]
+        then
+                dialog --title "ERRO" \
+                --msgbox "Usuario $nomeusuario nao existe. \
+                Tente novamente" \
+                6 40
+                break
+        fi
+        USUARIO_SHARE=$nomeusuario
+        #useradd -m -s $(which nologin) -b $BASEDIR -G sftponly $USUARIO
+	useradd -m -s $(which nologin) -b $BASEDIR -G sftponly  -c "$jirainfo" $USUARIO
+        echo $USUARIO:$SENHA | chpasswd
+        mkdir -p $BASEDIR/$USUARIO/home/$USUARIO
+        chown -R root:$USUARIO $BASEDIR/$USUARIO
+        chown -R $USUARIO:$USUARIO $BASEDIR/$USUARIO/home/$USUARIO
+        chmod -R 755 $BASEDIR/$USUARIO
+        chmod -R 777 $BASEDIR/$USUARIO/home/$USUARIO
+        setfacl -R -d -m g::rwx $BASEDIR/$USUARIO/home/$USUARIO/
+        setfacl -R -d -m o::rwx $BASEDIR/$USUARIO/home/$USUARIO/
+        echo 5 > /admin/maintenance/retencao/$USUARIO
+	usermod -g $USUARIO_SHARE $USUARIO
+	usermod -d $BASEDIR/$USUARIO_SHARE $USUARIO
+        setquota -g $USUARIO_SHARE 0 $HQUOTA 0 0 $BASEDIR
+        setquota -u $USUARIO 0 0 0 0 $BASEDIR
+        setquota -u $USUARIO_SHARE 0 0 0 0 $BASEDIR
+        dialog \
+        --title "SUCESSO" \
+        --msgbox "A senha do usuario $USUARIO e: $SENHA" \
+        6 40
+	AUDITORIA "Criou o usuario $USUARIO com o mesmo home de $USUARIO_SHARE"
+}
+function USUARIO_CRIAR() {
+	arqtemp=$(ARQTEMP criar)
+	dialog \
+	--inputbox "Entre com o numero do jira" 0 0 2> $arqtemp
+	retorno=$?
+	case $retorno in
+                $DIA_CANCEL)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_HELP)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_EXTRA)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_ITEM_HELP)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_ESC)
+                        dialog --clear
+                        break
+                        ;;
+
+        esac
+	jirainfo=$(cat $arqtemp)
+	ARQTEMP apagar $arqtemp
+	arqtemp=$(ARQTEMP criar)
+	dialog \
+	--inputbox "Entre com o nome do novo usuario" 0 0 2> $arqtemp
+	retorno=$?
+	case $retorno in
+                $DIA_CANCEL)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_HELP)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_EXTRA)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_ITEM_HELP)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_ESC)
+                        dialog --clear
+                        break
+                        ;;
+
+        esac
+	nomeusuario=$(cat $arqtemp)
+	ARQTEMP apagar $arqtemp
+        arqtemp=$(ARQTEMP criar)
+        dialog \
+        --inputbox "Entre com a validade do usuario em dias, somente o numero ou deixe em branco para nunca expirar." 0 0 2> $arqtemp
+        retorno=$?
+        case $retorno in
+                $DIA_CANCEL)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_HELP)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_EXTRA)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_ITEM_HELP)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_ESC)
+                        dialog --clear
+                        break
+                        ;;
+
+        esac
+        validade=$(cat $arqtemp)
+        ARQTEMP apagar $arqtemp
+	cat /etc/passwd | grep \/dados\/ftp | awk -F : '{print $1}'  |grep -w $nomeusuario
+	retorno=$?
+	if [ $retorno -eq 0 ]
+	then
+		dialog --title "ERRO" \
+		--msgbox "Usuario $nomeusuario ja existe. \
+		Tente novamente" \
+		6 40
+		break
+	fi		
+	USUARIO=$nomeusuario
+	SENHA=$(GENSENHA)
+	HQUOTA=5G
+	BASEDIR=/dados/ftp01
+	if [ -a $BASEDIR/$USUARIO ]
+	then
+		dialog --title "ERRO" \
+		--msgbox "Home do usuario $nomeusuario ja existe. \
+		Tente novamente" \
+		6 40
+		break
+	fi		
+	useradd -m -s $(which nologin) -b $BASEDIR -G sftponly  -c "$jirainfo" $USUARIO
+	echo $USUARIO:$SENHA | chpasswd
+	mkdir -p $BASEDIR/$USUARIO/home/$USUARIO
+	chown -R root:$USUARIO $BASEDIR/$USUARIO
+	chown -R $USUARIO:$USUARIO $BASEDIR/$USUARIO/home/$USUARIO
+	chmod -R 755 $BASEDIR/$USUARIO
+	chmod -R 777 $BASEDIR/$USUARIO/home/$USUARIO
+	setquota -u $USUARIO 0 $HQUOTA 0 0 $BASEDIR
+	setfacl -R -d -m g::rwx $BASEDIR/$USUARIO/home/$USUARIO/
+	setfacl -R -d -m o::rwx $BASEDIR/$USUARIO/home/$USUARIO/
+	if [ $validade -gt 0 ]
+	then
+		chage -E $(date -d "$validade days" +"%Y-%m-%d") $USUARIO
+	fi
+	echo 5 > /admin/maintenance/retencao/$USUARIO
+	dialog \
+	--title "SUCESSO" \
+	--msgbox "A senha do usuario $nomeusuario e: $SENHA" \
+	6 40
+	AUDITORIA "Criou o usuario $USUARIO"
+}
+function GENSENHA() {
+	local l=$1
+       	[ "$l" == "" ] && l=10
+      	tr -dc A-Za-z0-9_ < /dev/urandom | head -c ${l} | xargs
+}
+function USUARIO_APAGAR() {
+	arqtemp=$(ARQTEMP criar)
+	dialog \
+	--title "Exclusao de usuario" \
+	--inputbox "Entre com o nome do usuario a ser removido" 0 0 2> $arqtemp
+	retorno=$?
+	case $retorno in
+                $DIA_CANCEL)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_HELP)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_EXTRA)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_ITEM_HELP)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_ESC)
+                        dialog --clear
+                        break
+                        ;;
+
+        esac
+	nomeusuario=$(cat $arqtemp)
+	ARQTEMP apagar $arqtemp
+	cat /etc/passwd | grep \/dados\/ftp | awk -F : '{print $1}'  |grep -w $nomeusuario
+	retorno=$?
+	if [ $retorno -ne 0 ]
+	then
+		dialog --title "ERRO" \
+		--msgbox "Usuario $nomeusuario nao existe. \
+		Tente novamente" \
+		6 40
+		break
+	fi		
+	dialog \
+	--title "Favor confirmar" \
+	--yesno "Realmente gostaria de excluir $nomeusuario ?" \
+	6 40
+	retorno=$?
+	if [ $retorno -eq 0 ]
+	then
+		rm -fr /admin/maintenance/retencao/$nomeusuario
+		setquota -g $nomeusuario 0 0 0 0 /dados/ftp01
+		setquota -u $nomeusuario 0 0 0 0 /dados/ftp01
+		userdel $nomeusuario
+		AUDITORIA "Apagou o usuario $nomeusuario"
+		retorno=$?
+		if [ $retorno -eq 0 ]
+		then
+			dialog \
+			--title "Sucesso" \
+			--msgbox "Usuario $nomeusuario removido" \
+			6 40
+		fi
+	fi
+ 
+ 
+ 
+}
+function USUARIO_ATIVAR() {
+	echo usuario ativar
+}
+function LISTA_EXPIRACAO_USUARIO(){
+	arqtemp=$(ARQTEMP criar)
+	arqtemp2=$(ARQTEMP criar)
+	echo USUARIO VALIDADE > $arqtemp
+	cat /etc/passwd | grep /dados/ftp01 | awk -F : '{print $1}' | while read valor; do echo $valor $(chage -l $valor| grep "Account expires" | awk '{print "\""$4 " " $5 " " $6"\""}');done  >> $arqtemp
+	cat $arqtemp | column -t > $arqtemp2
+	dialog \
+	--title "Membros do grupo $nomegrupo" \
+	--textbox $arqtemp2 \
+	0 0 
+	ARQTEMP apagar $arqtemp
+	ARQTEMP apagar $arqtemp2
+}
+function LISTAR_USUARIOS_POR_GRUPO(){
+	arqtemp=$(ARQTEMP criar)
+	dialog \
+	--inputbox "Entre com o ID do grupo" 0 0 2> $arqtemp
+	retorno=$?
+	case $retorno in
+                $DIA_CANCEL)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_HELP)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_EXTRA)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_ITEM_HELP)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_ESC)
+                        dialog --clear
+                        break
+                        ;;
+
+        esac
+	nomegrupo=$(cat $arqtemp)
+	ARQTEMP apagar $arqtemp
+	arqtemp=$(ARQTEMP criar)
+	arqtemp2=$(ARQTEMP criar)
+	echo GID NOME PATH > $arqtemp
+	cat /etc/passwd | awk -F : '{print $4 " " $1 " " $6}' | grep ^$nomegrupo >> $arqtemp
+	cat $arqtemp | column -t > $arqtemp2
+	dialog \
+	--title "Membros do grupo $nomegrupo" \
+	--textbox $arqtemp2 \
+	0 0 
+	ARQTEMP apagar $arqtemp
+	ARQTEMP apagar $arqtemp2
+}
+function USUARIO_LISTAR() {
+	arquivotemporario=$(ARQTEMP criar)
+	arquivotemporario2=$(ARQTEMP criar)
+	echo USUARIO UID GID HOME COMENTARIO> $arquivotemporario
+	grep \/dados\/ftp /etc/passwd | awk -F : '{print $1 " " $3 " " $4 " " $6 " \"" $5 "\" "}' >> $arquivotemporario
+	cat $arquivotemporario | column -t > $arquivotemporario2
+	dialog \
+	--title "Usuarios de FTP" \
+	--textbox $arquivotemporario2 \
+	0 0 
+	ARQTEMP apagar $arquivotemporario
+	ARQTEMP apagar $arquivotemporario2
+}
+function USUARIO_DESATIVAR() {
+	echo usuario desativar
+}
+function ARQTEMP() {
+case $1 in
+	criar) mktemp --suffix=-ftp
+		;;
+	apagar)
+		rm -fr $2
+		;;
+esac
+}
+function FIREWALL() {
+while true
+do
+	ARQ_FLAG_FIREWALL=/admin/maintenance/flag_firewall
+	FLAG_FIREWALL=$(cat $ARQ_FLAG_FIREWALL)
+        SELECAO=$(dialog \
+                --backtitle "FIREWALL" \
+                --title "FIREWALL" \
+                --clear \
+		--help-button \
+                --menu "Favor selecionar:" $ALTURA $LARGURA 10 \
+                "1" "Log do firewall do FTP_MANAGER" \
+                "2" "Visualizar Regras do IPTABLES" \
+                "3" "Verificar Status do Firewall" \
+                "4" "Desligar/Ligar Firewall" \
+                "5" "Limpar regras do Firewall" \
+                "s" "Sair"\
+                2>&1 1>&3 )
+        RETORNO=$?
+        case $RETORNO in
+                $DIA_OK)
+                        case $SELECAO in
+                                1)
+					READ_LOG /var/log/fw_bruteforce.log firewall
+                                        ;;
+                                2)
+					arqtemp=$(ARQTEMP criar)
+					iptables -L -n > $arqtemp
+					READ_LOG $arqtemp "IPTables Rules"
+					ARQTEMP apagar $arqtemp
+                                        ;;
+                                3)
+					if [ $FLAG_FIREWALL -eq 0 ]
+					then
+						dialog \
+						--title "FIREWALL" \
+						--msgbox "LIGADO" \
+						0 0
+					else
+						dialog \
+						--title "FIREWALL" \
+						--msgbox "DESLIGADO" \
+						0 0
+					fi
+                                        ;;
+                                4)
+					if [ $FLAG_FIREWALL -eq 0 ]
+					then
+						echo 1 > $ARQ_FLAG_FIREWALL
+						AUDITORIA "Desligou o Firewall"
+						dialog \
+						--title "FIREWALL" \
+						--msgbox "DESLIGADO" \
+						0 0
+					else
+						AUDITORIA "Ligou o Firewall"
+						echo 0 > $ARQ_FLAG_FIREWALL
+						dialog \
+						--title "FIREWALL" \
+						--msgbox "LIGADO" \
+						0 0
+					fi
+                                        ;;
+                                5)
+					iptables -F
+					iptables -X
+					dialog \
+					--title "Iptables" \
+					--msgbox "Regras removidas com sucesso." \
+					0 0
+					AUDITORIA "Limpou as regras do Firewall"
+                                        ;;
+                                s)
+                                        break
+                                        ;;
+                                *)
+                                        dialog --clear
+                                        break
+                                        ;;
+                        esac
+                        ;;
+                $DIA_CANCEL)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_HELP)
+			dialog \
+			--title "HELP" \
+			--textbox $MENU_HELP  \
+			0 0
+                        ;;
+                $DIA_EXTRA)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_ITEM_HELP)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_ESC)
+                        dialog --clear
+                        break
+                        ;;
+                *)
+                        dialog --clear
+                        break
+                        ;;
+        esac
+
+done
+}
+function AUDITORIA() {
+	echo $(date) $(date +"%s") usuario=$USER sudo=$SUDO_USER logname=$LOGNAME atividade=\"$1\" >> $LOG_AUDITORIA
+}
+function LOGS() {
+while true
+do
+        SELECAO=$(dialog \
+                --backtitle "$1" \
+                --title "$2" \
+                --clear \
+                --menu "Favor selecionar:" $ALTURA $LARGURA 10 \
+                "1" "SECURE" \
+                "2" "MESSAGES" \
+                "3" "XFER" \
+                "4" "FIREWALL" \
+                "5" "LAST" \
+                "6" "DMESG" \
+                "7" "Auditoria do FTP_MANAGER" \
+                "s" "Sair"\
+                2>&1 1>&3 )
+        RETORNO=$?
+        case $RETORNO in
+                $DIA_OK)
+                        case $SELECAO in
+                                1)
+					READ_LOG /var/log/secure secure
+                                        ;;
+                                2)
+					READ_LOG /var/log/messages messasges
+                                        ;;
+                                3)
+					READ_LOG /var/log/xferlog xferlog
+                                        ;;
+                                4)
+					READ_LOG /var/log/fw_bruteforce.log firewall
+                                        ;;
+                                5)
+					arqtemp=$(ARQTEMP criar)
+					last > $arqtemp
+					READ_LOG $arqtemp LAST
+					ARQTEMP apagar $arqtemp
+                                        ;;
+                                6)
+					READ_LOG /var/log/dmesg dmesg
+                                        ;;
+                                7)
+					READ_LOG $LOG_AUDITORIA "Logs de auditoria"
+                                        ;;
+                                s)
+                                        break
+                                        ;;
+                                *)
+                                        dialog --clear
+                                        break
+                                        ;;
+                        esac
+                        ;;
+                $DIA_CANCEL)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_HELP)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_EXTRA)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_ITEM_HELP)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_ESC)
+                        dialog --clear
+                        break
+                        ;;
+                *)
+                        dialog --clear
+                        break
+                        ;;
+        esac
+
+done
+}
+function NMON() {
+	echo NMON
+	sleep 1
+}
+function READ_LOG() {
+while true
+do
+        SELECAO=$(dialog \
+                --backtitle "$1" \
+                --title "$2" \
+                --clear \
+                --menu "Favor selecionar:" $ALTURA $LARGURA 10 \
+                "1" "Ler LOG" \
+                "2" "Visualisar em tempo real" \
+                "s" "Sair"\
+                2>&1 1>&3 )
+        RETORNO=$?
+        case $RETORNO in
+                $DIA_OK)
+                        case $SELECAO in
+                                1)
+					dialog \
+					--title $1 \
+					--textbox $1 \
+					0 0
+                                        ;;
+                                2)
+					dialog \
+					--title $1 \
+					--tailbox $1 \
+					0 0
+                                        ;;
+                                s)
+                                        break
+                                        ;;
+                                *)
+                                        dialog --clear
+                                        break
+                                        ;;
+                        esac
+                        ;;
+                $DIA_CANCEL)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_HELP)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_EXTRA)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_ITEM_HELP)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_ESC)
+                        dialog --clear
+                        break
+                        ;;
+                *)
+                        dialog --clear
+                        break
+                        ;;
+        esac
+ 
+done
+}
+function MENU() {
+exec 3>&1
+while true
+do
+	SELECAO=$(dialog \
+		--backtitle "Menu de opcoes " \
+		--title "Escolha uma opcao" \
+		--no-cancel \
+		--help-button \
+		--clear \
+		--menu "Favor selecionar:" $ALTURA $LARGURA 10 \
+		"1" "Gerenciar Usuarios" \
+		"2" "Gerenciar Quotas" \
+		"3" "Gerenciar Limpeza" \
+		"4" "FIREWALL " \
+		"5" "LOGS " \
+		"6" "NMON " \
+		"S" "Ir para o Shell como ROOT" \
+		"s" "Sair"\
+		2>&1 1>&3 )
+	RETORNO=$?
+	case $RETORNO in
+		$DIA_OK)
+			case $SELECAO in
+				1)
+					USUARIO
+					;;
+				2)
+					QUOTA
+					;;
+				3)
+					LIMPEZA
+					;;
+				4)
+					FIREWALL
+					;;
+				5)
+					LOGS
+					;;
+				6)
+					NMON
+					;;
+				S)
+					dialog --clear
+					/bin/bash
+					;;
+				s)
+					dialog --clear
+					exit 0
+					;;
+				*)
+					dialog --clear
+					exit 1
+					;;
+			esac
+			;;
+		$DIA_CANCEL)
+			dialog --clear
+			;;
+		$DIA_HELP)
+			dialog \
+			--title "HELP" \
+			--textbox $MENU_HELP  \
+			0 0
+			;;
+		$DIA_EXTRA)
+			dialog --clear
+			;;
+		$DIA_ITEM_HELP)
+			dialog --clear
+			;;
+		$DIA_ESC)
+			dialog --clear
+			exit 1
+			;;
+		*)
+			dialog --clear
+			exit 1
+			;;
+	esac
+ 
+done
+}
+function QUOTA() {
+exec 3>&1
+while true
+do
+        SELECAO=$(dialog \
+                --backtitle "Menu de opcoes de QUOTA" \
+                --title "Menu de QUOTA" \
+                --clear \
+		--help-button \
+                --menu "Favor selecionar:" $ALTURA $LARGURA 10 \
+                "1" "Listar Quotas de usuarios" \
+                "2" "Listar Quotas de grupos" \
+                "3" "Alterar Quotas de usuarios" \
+                "4" "Alterar Quotas de grupos" \
+                "s" "Sair"\
+                2>&1 1>&3 )
+        RETORNO=$?
+        case $RETORNO in
+                $DIA_OK)
+                        case $SELECAO in
+                                1)
+					QUOTA_LISTAR_USER
+                                        ;;
+                                2)
+					QUOTA_LISTAR_GROUP
+                                        ;;
+                                3)
+					QUOTA_USUARIO
+                                        ;;
+                                4)
+					QUOTA_GRUPO
+                                        ;;
+                                s)
+                                        break
+                                        ;;
+                                *)
+                                        dialog --clear
+                                        break
+                                        ;;
+                        esac
+                        ;;
+                $DIA_CANCEL)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_HELP)
+			dialog \
+			--title "HELP" \
+			--textbox $MENU_HELP  \
+			0 0
+                        ;;
+                $DIA_EXTRA)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_ITEM_HELP)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_ESC)
+                        dialog --clear
+                        break
+                        ;;
+                *)
+                        dialog --clear
+                        break
+                        ;;
+        esac
+ 
+done
+}
+function QUOTA_LISTAR_GROUP() {
+	arqtemp=$(ARQTEMP criar)
+	arqtemp2=$(ARQTEMP criar)
+	echo "USUARIO EM_USO MAXIMO %_EM_USO" > $arqtemp
+	cat /etc/passwd | grep \/dados\/ftp | awk -F : '{print $1}'   | while read valor
+	do 
+		echo $valor $(repquota -ag | grep -w ^$valor | awk '{print $3 "K " $5"K " 100 / $5 * $3 "%" }')
+	done >> $arqtemp
+	cat $arqtemp | column -t > $arqtemp2
+	dialog \
+	--title "Quotas dos grupos:" \
+	--textbox $arqtemp2 \
+	0 0 
+	ARQTEMP apagar $arqtemp
+	ARQTEMP apagar $arqtemp2
+}
+function QUOTA_LISTAR_USER() {
+	arqtemp=$(ARQTEMP criar)
+	arqtemp2=$(ARQTEMP criar)
+	echo "USUARIO EM_USO MAXIMO %_EM_USO" > $arqtemp
+	cat /etc/passwd | grep \/dados\/ftp | awk -F : '{print $1}'   | while read valor
+	do 
+		echo $valor $(repquota -au | grep -w ^$valor | awk '{print $3 "K " $5"K " 100 / $5 * $3 "%" }')
+	done >> $arqtemp
+	cat $arqtemp | column -t > $arqtemp2
+	dialog \
+	--title "Quotas dos usuarios:" \
+	--textbox $arqtemp2 \
+	0 0 
+	ARQTEMP apagar $arqtemp
+	ARQTEMP apagar $arqtemp2
+}
+function QUOTA_USUARIO() {
+	arqtemp=$(ARQTEMP criar)
+        dialog \
+        --inputbox "Entre com o nome do usuario" 0 0 2> $arqtemp
+	retorno=$?
+	case $retorno in
+                $DIA_CANCEL)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_HELP)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_EXTRA)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_ITEM_HELP)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_ESC)
+                        dialog --clear
+                        break
+                        ;;
+
+        esac
+        nomeusuario=$(cat $arqtemp)
+        ARQTEMP apagar $arqtemp
+        cat /etc/passwd | grep \/dados\/ftp | awk -F : '{print $1}'  |grep -w $nomeusuario
+        retorno=$?
+        if [ $retorno -ne 0 ]
+        then
+                dialog --title "ERRO" \
+                --msgbox "Usuario $nomeusuario nao existe. \
+                Tente novamente" \
+                6 40
+                break
+        fi
+	arqtemp=$(ARQTEMP criar)
+        dialog \
+        --inputbox "Entre com a quota do usuario $nomeusuario em giga, somente o numero sem letra" 0 0 2> $arqtemp
+        quotatamanho=$(cat $arqtemp)
+        ARQTEMP apagar $arqtemp
+	arqtemp=$(ARQTEMP criar)
+	if [ $quotatamanho -eq 0 ]
+	then
+		setquota -u $nomeusuario 0 0 0 0 /dados/ftp01
+		AUDITORIA "Desabilitou a quota do usuario $nomeusuario"
+        	retorno=$?
+	else
+		setquota -u $nomeusuario 0 $quotatamanho"G" 0 0  /dados/ftp01
+		AUDITORIA "Alterou a quota do usuario $nomeusuario para $quotatamanho"G""
+        	retorno=$?
+	fi
+        if [ $retorno -ne 0 ]
+        then
+                dialog --title "ERRO" \
+                --msgbox "Erro ao definir quota para $nomeusuariro. Procure um sysadmin de linux." \
+                6 40
+                break
+	else
+                dialog --title "SUCESSO" \
+                --msgbox "Quota aleterada para $nomeusuario." \
+                6 40
+        fi
+}
+function QUOTA_GRUPO() {
+	arqtemp=$(ARQTEMP criar)
+        dialog \
+        --inputbox "Entre com o nome do grupo" 0 0 2> $arqtemp
+	retorno=$?
+	case $retorno in
+                $DIA_CANCEL)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_HELP)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_EXTRA)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_ITEM_HELP)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_ESC)
+                        dialog --clear
+                        break
+                        ;;
+
+        esac
+        nomegrupo=$(cat $arqtemp)
+        ARQTEMP apagar $arqtemp
+        cat /etc/passwd | grep \/dados\/ftp | awk -F : '{print $1}'  |grep -w $nomegrupo
+        retorno=$?
+        if [ $retorno -ne 0 ]
+        then
+                dialog --title "ERRO" \
+                --msgbox "Grupo $nomegrupo nao existe. \
+                Tente novamente" \
+                6 40
+                break
+        fi
+	arqtemp=$(ARQTEMP criar)
+        dialog \
+        --inputbox "Entre com a quota do grupo $nomegrupo em giga, somente o numero sem letra" 0 0 2> $arqtemp
+	retorno=$?
+	case $retorno in
+                $DIA_CANCEL)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_HELP)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_EXTRA)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_ITEM_HELP)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_ESC)
+                        dialog --clear
+                        break
+                        ;;
+        esac
+        quotatamanho=$(cat $arqtemp)
+        ARQTEMP apagar $arqtemp
+	arqtemp=$(ARQTEMP criar)
+	if [ $quotatamanho -eq 0 ]
+	then
+		setquota -g $nomegrupo 0 0 0 0 /dados/ftp01
+		AUDITORIA "Desabilitou a quota do grupo $nomegrupo"
+        	retorno=$?
+	else
+		setquota -g $nomegrupo 0 $quotatamanho"G" 0 0  /dados/ftp01
+		AUDITORIA "Alterou a quota do grupo $nomegrupo para $quotatamanho"G""
+        	retorno=$?
+	fi
+        if [ $retorno -ne 0 ]
+        then
+                dialog --title "ERRO" \
+                --msgbox "Erro ao definir quota para $nomegrupo. Consulte um sysadmin de linux." \
+                6 40
+                break
+	else
+                dialog --title "SUCESSO" \
+                --msgbox "Quota aleterada para $nomegrupo." \
+                6 40
+        fi
+}
+function LIMPEZA_LISTAR() {
+	arqtemp=$(ARQTEMP criar)
+	ls -1 /admin/maintenance/retencao/ | while read valor
+	do
+		echo $valor $(cat /admin/maintenance/retencao/$valor) dias
+	done | column -t > $arqtemp
+	dialog \
+	--title "Politica de limpeza dos usuarios:" \
+	--textbox $arqtemp \
+	0 0 
+	ARQTEMP apagar $arqtemp
+}
+function LIMPEZA_ALTERAR(){
+	ARQTEMP apagar $arqtemp
+	arqtemp=$(ARQTEMP criar)
+        dialog \
+        --inputbox "Entre com o nome do usuario" 0 0 2> $arqtemp
+	retorno=$?
+	case $retorno in
+                $DIA_CANCEL)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_HELP)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_EXTRA)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_ITEM_HELP)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_ESC)
+                        dialog --clear
+                        break
+                        ;;
+
+        esac
+        nomeusuario=$(cat $arqtemp)
+        ARQTEMP apagar $arqtemp
+        cat /etc/passwd | grep \/dados\/ftp | awk -F : '{print $1}'  |grep -w $nomeusuario
+        retorno=$?
+        if [ $retorno -ne 0 ]
+        then
+                dialog --title "ERRO" \
+                --msgbox "Usuario $nomeusuario nao existe. \
+                Tente novamente" \
+                6 40
+                break
+        fi
+	arqtemp=$(ARQTEMP criar)
+        dialog \
+        --inputbox "Entre com a retencao do usuario $nomeusuario em dias." 0 0 2> $arqtemp
+        retencao=$(cat $arqtemp)
+        ARQTEMP apagar $arqtemp
+	arqtemp=$(ARQTEMP criar)
+	if [ $retencao -eq 0 ]
+	then
+		rm -fr  /admin/maintenance/retencao/$nomeusuario
+		AUDITORIA "Desabilitou a limpeza de arquivos do usuario $nomeusuario"
+        	retorno=$?
+	else
+		echo $retencao > /admin/maintenance/retencao/$nomeusuario
+		AUDITORIA "Alterou a limpeza de arquivos do usuario $nomeusuario para $retencao dias"
+        	retorno=$?
+	fi
+}
+function LIMPEZA() {
+exec 3>&1
+while true
+do
+        SELECAO=$(dialog \
+                --backtitle "Menu de opcoes de LIMPEZA" \
+                --title "Menu de limpeza" \
+                --clear \
+		--help-button \
+                --menu "Favor selecionar:" $ALTURA $LARGURA 10 \
+                "1" "Listar politicas de Limpeza" \
+                "2" "Alterar politicas de Limpeza" \
+                "s" "Sair"\
+                2>&1 1>&3 )
+        RETORNO=$?
+        case $RETORNO in
+                $DIA_OK)
+                        case $SELECAO in
+                                1)
+                                        LIMPEZA_LISTAR
+                                        ;;
+                                2)
+                                        LIMPEZA_ALTERAR
+                                        ;;
+                                s)
+                                        break
+                                        ;;
+                                *)
+                                        dialog --clear
+                                        break
+                                        ;;
+                        esac
+                        ;;
+                $DIA_CANCEL)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_HELP)
+			dialog \
+			--title "HELP" \
+			--textbox $MENU_HELP  \
+			0 0
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_EXTRA)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_ITEM_HELP)
+                        dialog --clear
+                        break
+                        ;;
+                $DIA_ESC)
+                        dialog --clear
+                        break
+                        ;;
+                *)
+                        dialog --clear
+                        break
+                        ;;
+        esac
+ 
+done
+}
+dialog --title "login OPERADOR" --msgbox "Voce esta logado com um usuario de manutencao do FTP server.
+Para evitar confusoes consulte o infrawiki/confluence antes de operar o sistema." 8 60
+MENU
+dialog --clear

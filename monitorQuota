@@ -1,0 +1,63 @@
+#!/bin/bash
+N_ENTRADAS=$#
+export TAG=QUOTA
+DORME=1
+ENTRADA=$1
+function QUOTA_LISTAR_USER() {
+	sudo -u root repquota -au | \
+		tail -n $(expr $(sudo -u root repquota -au | wc -l) - 6)  | \
+		head -n $(expr $(sudo -u root repquota -au | wc -l) - 8) | \
+		awk '{ print $5 " " $3 " " $1}' | \
+		grep -v ^\0
+}
+function QUOTA_LISTAR_GROUP() {
+	sudo -u root repquota -ag | \
+		tail -n $(expr $(sudo -u root repquota -au | wc -l) - 6)  | \
+		head -n $(expr $(sudo -u root repquota -au | wc -l) - 8) | \
+		awk '{ print $5 " " $3 " " $1}' | \
+		grep -v ^\0
+}
+function ARQTEMP() {
+case $1 in
+        criar) mktemp --suffix=-ftp
+                ;;
+        apagar)
+                rm -fr $2
+                ;;
+esac
+}
+function INVENTARIO() {
+	echo \{
+        echo \"data\":[
+        arqtemp=$(ARQTEMP criar)
+        arqtemp2=$(ARQTEMP criar)
+	QUOTA_LISTAR_USER >> $arqtemp
+	QUOTA_LISTAR_GROUP >> $arqtemp
+	cat $arqtemp | \
+		awk '{print $3}' | \
+                while read valor
+                do
+                        echo \{ \"\{\#$TAG\}\":\"$valor\" }, >> $arqtemp2
+                done
+        cat $arqtemp2 | sed -e $(cat -n $arqtemp2 | tail -n 1 | awk '{print $1}')'s/,//g'
+        echo ]
+        echo \}
+        ARQTEMP apagar $arqtemp
+        ARQTEMP apagar $arqtemp2
+}
+function VERIFICAR() {
+        arqtemp=$(ARQTEMP criar)
+	QUOTA_LISTAR_USER >> $arqtemp
+	QUOTA_LISTAR_GROUP >> $arqtemp
+	cat $arqtemp | grep -w $1 | awk '{printf "%f\n", (100 * $2) / $1}'
+        ARQTEMP apagar $arqtemp
+}
+ 
+case $N_ENTRADAS in
+        0)
+                INVENTARIO
+                ;;
+        *)
+                VERIFICAR $ENTRADA
+                ;;
+esac

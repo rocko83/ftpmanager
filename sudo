@@ -1,0 +1,18 @@
+#!/bin/bash
+case $# in
+	1)
+		if [[ $1 == "-s" || $1 == "-i" ]]
+		then
+			sudo -u root -i
+		fi
+		;;
+	2)
+		if [[ $1 == "su" && $2 == "-" ]]
+		then
+			sudo -u root -i
+		fi
+		;;
+	*)
+		sudo_ori $*
+		;;
+esac

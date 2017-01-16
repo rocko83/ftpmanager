@@ -1,0 +1,11 @@
+#!/bin/bash
+DIR_POLITICAS_LIMPESA=/admin/maintenance/retencao
+HOME_ROOT=/dados/ftp01
+ls -1 /admin/maintenance/retencao | while read valor
+do
+	retencao=$(cat $DIR_POLITICAS_LIMPESA/$valor)
+	if [ -d $HOME_ROOT/$valor/home/$valor ]
+	then
+		find $HOME_ROOT/$valor/home/$valor -type f -mtime +$retencao -exec rm -fr {} \;
+	fi
+done

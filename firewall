@@ -1,0 +1,72 @@
+#!/bin/bash -x
+#By D'Amato
+#BASE DE DADOS EM SQLITE3
+BASE_DADOS=/admin/maintenance/fw_porta_22.db
+#PESQUISA LOGINS MAL SUCEDIDOS NOS ULTIMOS N SEGUNDOS
+PENALIDADE_LOGIN=1800
+#CONTADOR DE TENTATIVAS DE ACESSO POR SSH
+HITCOUNT=4
+#0=ativado 1=desativado
+ATIVA_FREIO=0
+#TEMPO DE ATUALIZACAO DO IPTABLES PARA TENTATIVAS DE SSH
+HITTIME=60
+#Excessao no controle de vazao da porta 22
+EXCESSAO=66.231.94.250
+#CAMINHO DO LOG DE SEGURANCA
+LOG_SECURE=/var/log/secure
+LOG_OUTPUT_PATH=/var/log/fw_bruteforce.log
+#CONTADOR DE TENTATIVAS SEM SUCESSO DE LOGIN
+FAIL_COUNT=4
+FLAG_FIREWALL=/admin/maintenance/flag_firewall
+function ARQTEMP() {
+case $1 in
+        criar) mktemp --suffix=-ftp
+                ;;
+        apagar)
+                rm -fr $2
+                ;;
+esac
+}
+#CRIAR BANCO DE DADOS, CASO NA EXISTA
+sqlite3 $BASE_DADOS "create table IF NOT EXISTS bloqueios(data varchar(25) primary key, timestamp real, endereco varchar(15))"
+sqlite3 $BASE_DADOS "delete from bloqueios where timestamp <= '$(expr $(date +"%s") - 10368000)'"
+arqtemp=$(ARQTEMP criar)
+cat $LOG_SECURE |grep "authentication failure"|awk '{print $1 "_" $2 "_" $3 "_" $5 " " $14 }' | sed -e "s/rhost=//g" > $arqtemp
+cat $arqtemp | while read DATA ENDERECO
+do
+        TIMESTAMP=$(date +"%s")
+         sqlite3 $BASE_DADOS "INSERT INTO bloqueios(data,timestamp,endereco) SELECT '$DATA', '$TIMESTAMP','$ENDERECO' WHERE NOT EXISTS(SELECT 1 FROM bloqueios WHERE data = '$DATA')"
+done
+ARQTEMP apagar $arqtemp
+retorno=$(cat $FLAG_FIREWALL)
+if [ $retorno -eq 0 ]
+then
+        iptables -F
+        iptables -X
+        iptables -N BLOQUEIO
+        iptables -A BLOQUEIO -p all -j DROP
+        iptables -N WEBLOCK
+        iptables -A WEBLOCK -p tcp -m multiport --dports 80,443 -j DROP
+        iptables -A WEBLOCK -p udp -m multiport --dports 80,443 -j DROP
+        iptables -A WEBLOCK -p tcp -m multiport --sports 80,443 -j DROP
+        iptables -A WEBLOCK -p udp -m multiport --sports 80,443 -j DROP
+        if [ $ATIVA_FREIO -eq 0 ]
+        then
+                iptables -N LOGDROP
+                iptables -A LOGDROP -j LOG
+                iptables -A LOGDROP -j DROP
+                iptables -I INPUT -p tcp ! -s $EXCESSAO --dport 22 -i eth0 -m state --state NEW -m recent --set
+                iptables -I INPUT -p tcp ! -s $EXCESSAO --dport 22 -i eth0 -m state --state NEW -m recent  --update --seconds $HITTIME --hitcount $HITCOUNT -j LOGDROP
+        fi
+        TIMESTAMP=$(expr $(date +"%s") - $PENALIDADE_LOGIN)
+        echo $TIMESTAMP
+        echo $(date) $(sqlite3 $BASE_DADOS "select endereco,count(endereco) from bloqueios where timestamp >= $TIMESTAMP group by endereco having count(endereco) > $FAIL_COUNT") >> $LOG_OUTPUT_PATH
+        sqlite3 $BASE_DADOS "select endereco,count(endereco) from bloqueios where timestamp >= $TIMESTAMP group by endereco having count(endereco) > $FAIL_COUNT" | awk -F \| '{print $1}'|while read valor
+        do
+                iptables -A INPUT -s $valor -j BLOQUEIO
+                iptables -A OUTPUT -d $valor -j BLOQUEIO
+
+        done
+else
+        iptables -F
+fi

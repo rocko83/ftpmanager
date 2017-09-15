@@ -151,7 +151,7 @@ function ALTERAR_EXPIRACAO_USUARIO() {
         fi
         arqtemp=$(ARQTEMP criar)
         dialog \
-        --inputbox "Entre com a validade do usuario $nomeusuario em dias, somente os numeros" 0 0 2> $arqtemp
+        --inputbox "Entre com a validade do usuario $nomeusuario em dias, somente os numeros, ou zero para nao expirar." 0 0 2> $arqtemp
         retorno=$?
         case $retorno in
                 $DIA_CANCEL)
@@ -180,8 +180,10 @@ function ALTERAR_EXPIRACAO_USUARIO() {
 	if [ $validade -gt 0 ]
         then
                 chage -E $(date -d "$validade days" +"%Y-%m-%d") $nomeusuario
+        	AUDITORIA "Alterou a validade do $nomeusuario para expirar em $validade dias"
 	else
                 chage -E -1 $nomeusuario
+        	AUDITORIA "Alterou a validade do $nomeusuario para nao expirar "
         fi
         echo 5 > /admin/maintenance/retencao/$USUARIO
         dialog \
